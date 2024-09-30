@@ -1,34 +1,175 @@
 import logging
+import os
+import json
 from datetime import datetime, timedelta
 from kivy.app import App
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
 from kivy.uix.label import Label
-from kivy.properties import NumericProperty
+from kivy.uix.colorpicker import ColorPicker
+from kivy.uix.textinput import TextInput
+from kivy.uix.modalview import ModalView
+from kivy.properties import NumericProperty, ListProperty
 from kivy.uix.popup import Popup
 from supabase import Client
 import supabase_helper
+import ast  # 문자열을 tuple로 변환하기 위해 사용
 
 # 로그 설정 (INFO 레벨로 설정)
 logging.basicConfig(level=logging.INFO)
 
+LOGIN_FILE = "login_info.json"  # 로그인 정보를 저장할 파일
+
+class LoginModal(ModalView):
+    def __init__(self, calendar_layout, supabase_client, **kwargs):
+        super().__init__(**kwargs)
+        self.calendar_layout = calendar_layout
+        self.supabase_client = supabase_client  # Supabase 클라이언트 저장
+        self.size_hint = (0.8, 0.4)
+        self.auto_dismiss = False  # 로그인 전에는 닫히지 않도록 설정
+
+        layout = BoxLayout(orientation='vertical', padding=10, spacing=10)
+
+        self.username_input = TextInput(hint_text='사용자 이름', multiline=False, font_name='NanumGothic.ttf')
+        self.password_input = TextInput(hint_text='비밀번호', multiline=False, password=True, font_name='NanumGothic.ttf')
+
+        login_button = Button(text='로그인', on_press=self.login, font_name='NanumGothic.ttf')
+
+        layout.add_widget(Label(text='로그인', font_name='NanumGothic.ttf'))
+        layout.add_widget(self.username_input)
+        layout.add_widget(self.password_input)
+        layout.add_widget(login_button)
+
+        self.add_widget(layout)
+
+    def login(self, instance=None):
+        username = self.username_input.text
+        password = self.password_input.text
+
+        # 로그인 검증 (supabase_client를 인자로 전달)
+        if supabase_helper.verify_login(username, password, self.supabase_client):
+            print("로그인 성공")
+            self.save_login_info()  # 로그인 성공 시 날짜 저장
+            self.remove_login_popup()  # 로그인 팝업 닫기
+            self.calendar_layout.load_all_events()  # 로그인 성공 후 달력 데이터를 불러옴
+        else:
+            # 로그인 실패 시 오류 메시지 표시
+            print("로그인 실패")
+            self.username_input.text = ""
+            self.password_input.text = ""
+            self.password_input.hint_text = "로그인 실패. 다시 시도하세요."
+
+    def save_login_info(self):
+        """로그인 날짜를 파일에 저장"""
+        login_data = {"last_login": datetime.now().isoformat()}
+        with open(LOGIN_FILE, "w") as f:
+            json.dump(login_data, f)
+
+    def remove_login_popup(self):
+        """부모 레이아웃에서 ModalView 제거"""
+        if self.parent:
+            self.parent.remove_widget(self)
+
+
+
+
+class ColorPickerPopup(BoxLayout):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.color_picker = ColorPicker()
+        self.color_picker.bind(color=self.on_color)  # 색상이 선택될 때 이벤트 바인딩
+        self.add_widget(self.color_picker)
+
+    def on_color(self, instance, value):
+        # 선택한 색상을 적용할 메서드
+        self.parent.parent.update_button_color(value)  # 부모에서 update_button_color 호출
+
 class CalendarLayout(BoxLayout):
     year = NumericProperty(datetime.now().year)
     month = NumericProperty(datetime.now().month)
+    day = NumericProperty(datetime.now().day)
     supabase_client: Client = None  # Supabase 클라이언트를 저장할 변수
     events = []  # 전체 일정 데이터를 저장할 리스트
+    color_picker_popup = None # 팝업 인스턴스를 저장할 속성 추가
+    selected_color = ListProperty([0.7, 0.7, 0.7, 1])  # 선택한 색상 저장, 초기값 설정
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.supabase_client = supabase_helper.create_supabase_client()  # Supabase 클라이언트 생성
         self.load_all_events()  # 전체 일정을 한 번에 불러옴
         self.update_calendar()
+        self.color_popup = None  # 팝업을 저장할 속성 추가
+        # 로그인 팝업 표시 여부 결정
+        if self.should_show_login_popup():
+            self.show_login_popup()
+        else:
+            self.load_all_events()  # 전체 일정을 한 번에 불러옴
+            self.update_calendar()
+
+    def should_show_login_popup(self):
+        """로그인 팝업을 띄울지 여부를 판단"""
+        if os.path.exists(LOGIN_FILE):
+            try:
+                with open(LOGIN_FILE, "r") as f:
+                    login_data = json.load(f)
+                    last_login = datetime.fromisoformat(login_data["last_login"])
+                    # 마지막 로그인 날짜로부터 3개월이 지났는지 확인
+                    if datetime.now() < last_login + timedelta(days=90):
+                        print("3개월 이내에 로그인한 기록이 있습니다.")
+                        return False
+            except (json.JSONDecodeError, KeyError, ValueError):
+                print("로그인 정보 파일이 손상되었거나 비어 있습니다.")
+                # 파일이 손상되었거나 비어 있을 경우, 팝업을 띄우고 파일을 다시 저장합니다.
+                return True
+        print("로그인 팝업을 띄웁니다.")
+        return True
+    
+    def show_login_popup(self):
+        """로그인 팝업을 표시하는 함수"""
+        self.login_popup = LoginModal(calendar_layout=self, supabase_client=self.supabase_client)
+        self.login_popup.open()  # 로그인 팝업을 띄우기
+
+        # ModalView를 맨 앞으로 보이게 하기 위해 재배치
+        self.bring_to_front(self.login_popup)
+
+    def bring_to_front(self, widget):
+        # 먼저 위젯을 제거한 후 다시 추가하여 가장 위로 올림
+        parent = widget.parent
+        if parent:
+            parent.remove_widget(widget)
+        self.add_widget(widget)  # 가장 나중에 추가되어 z-order에서 맨 앞으로 이동
+
+    def parse_color(self, color_string):
+        """문자열 형식의 색상 데이터를 tuple로 변환"""
+        try:
+            return ast.literal_eval(color_string)  # 문자열을 tuple로 변환
+        except (ValueError, SyntaxError):
+            return (1, 1, 1, 1)  # 변환 실패 시 기본 흰색 반환
 
     def load_all_events(self):
-        """Supabase에서 전체 일정을 한 번에 가져와 저장"""
+        """로그인 후 Supabase에서 전체 일정을 불러옴"""
         response = supabase_helper.get_calendar_data(self.supabase_client)  # 전체 일정 가져오기
         self.events = response  # 전체 일정을 변수에 저장
         logging.info(f"전체 {len(self.events)}개 일정 로드")  # 전체 일정 로드 로그 출력
+        self.update_calendar()  # 로그인 후 달력 업데이트
+
+    def setGlobalColor(self):
+        """글로벌 색상 선택 팝업을 열기 위한 메서드"""
+        color_picker = ColorPicker()
+
+        # 색상 선택기에서 색상 변경 시 호출되는 메서드
+        color_picker.bind(color=self.on_color)
+
+        # 팝업 객체 생성
+        self.color_popup = Popup(title="색상 선택", content=color_picker, size_hint=(0.8, 0.8))
+
+        # 팝업 열기
+        self.color_popup.open()
+
+    def on_color(self, instance, value):
+        """선택된 색상을 모든 버튼에 적용하는 메서드"""
+        self.selected_color = value  # 선택한 색상을 저장
+        self.update_calendar()  # 색상 선택 후 즉시 업데이트
 
     def get_events_for_month(self, year, month):
         """특정 연도와 월에 해당하는 일정을 필터링"""
@@ -76,9 +217,13 @@ class CalendarLayout(BoxLayout):
             if day_events:
                 event_texts = "\n\n".join([event['schedule_value'] for event in day_events])
                 event_text = f"{prev_day}\n\n{event_texts}"
+                btn_color = self.parse_color(day_events[0].get('btn_color', ''))  # 문자열을 tuple로 변환
+                # 이전 달 버튼 채도 낮춘 색상 적용
+                darker_color = [c * 0.7 for c in btn_color[:3]] + [1]  # 채도를 낮춘 색상
                 logging.info(f"{date_str}에 대한 이전 달 일정 추가: {event_texts}")  # 일정 로그
             else:
                 event_text = str(prev_day)
+                darker_color = (0.7, 0.7, 0.7, 1)  # 기본 배경색은 채도를 낮춘 회색
                 logging.info(f"{date_str}에 이전 달 일정 없음")  # 일정 없음 로그
 
             btn = Button(
@@ -88,7 +233,7 @@ class CalendarLayout(BoxLayout):
                 valign='top',
                 padding=(10, 10),
                 font_name="NanumGothic.ttf",
-                background_color=(0.7, 0.7, 0.7, 1),  # 이전 달 일정 배경색
+                background_color=darker_color,  # 채도를 낮춘 배경색 설정
                 text_size=(self.width, None),
                 on_press=lambda instance, m=self.month - 1: self.show_event_popup(instance, m))
 
@@ -103,9 +248,11 @@ class CalendarLayout(BoxLayout):
             if day_events:
                 event_texts = "\n\n".join([event['schedule_value'] for event in day_events])
                 event_text = f"{day}\n\n{event_texts}"
+                btn_color = self.parse_color(day_events[0].get('btn_color', ''))  # 문자열을 tuple로 변환
                 logging.info(f"{date_str}에 대한 일정 추가: {event_texts}")  # 일정 로그
             else:
                 event_text = str(day)
+                btn_color = (1, 1, 1, 1)  # 기본 배경색은 흰색
                 logging.info(f"{date_str}에 일정 없음")  # 일정 없음 로그
 
             btn = Button(
@@ -115,6 +262,7 @@ class CalendarLayout(BoxLayout):
                 valign='top',
                 padding=(10, 10),
                 font_name="NanumGothic.ttf",
+                background_color=btn_color,  # 배경색 설정
                 text_size=(self.width, None),
                 on_press=lambda instance, m=self.month: self.show_event_popup(instance, m))
 
@@ -131,9 +279,13 @@ class CalendarLayout(BoxLayout):
             if day_events:
                 event_texts = "\n\n".join([event['schedule_value'] for event in day_events])
                 event_text = f"{next_month_day}\n\n{event_texts}"
+                btn_color = self.parse_color(day_events[0].get('btn_color', ''))  # 문자열을 tuple로 변환
+                # 다음 달 버튼 채도 낮춘 색상 적용
+                darker_color = [c * 0.7 for c in btn_color[:3]] + [1]  # 채도를 낮춘 색상
                 logging.info(f"{date_str}에 대한 다음 달 일정 추가: {event_texts}")  # 일정 로그
             else:
                 event_text = str(next_month_day)
+                darker_color = (0.7, 0.7, 0.7, 1)  # 기본 배경색은 채도를 낮춘 회색
                 logging.info(f"{date_str}에 다음 달 일정 없음")  # 일정 없음 로그
 
             btn = Button(
@@ -143,7 +295,7 @@ class CalendarLayout(BoxLayout):
                 valign='top',
                 padding=(10, 10),
                 font_name="NanumGothic.ttf",
-                background_color=(0.7, 0.7, 0.7, 1),  # 다음 달 일정 배경색
+                background_color=darker_color,  # 채도를 낮춘 배경색 설정
                 text_size=(self.width, None),
                 on_press=lambda instance, m=self.month + 1: self.show_event_popup(instance, m))
 
@@ -152,8 +304,6 @@ class CalendarLayout(BoxLayout):
 
             next_month_day += 1
             total_days_displayed += 1
-
-
 
     def show_event_popup(self, instance, month):
         # instance.text에서 일자 부분만 추출하여 두 글자까지 자름
@@ -171,7 +321,8 @@ class CalendarLayout(BoxLayout):
         popup_content.ids.date_label.text = f"선택한 날짜: {formatted_date}"
 
         # 팝업 객체 생성 및 팝업을 content에 설정
-        popup = Popup(title="", content=popup_content, size_hint=(0.8, 0.6))
+        popup = ModalView(size_hint=(0.8, 0.6))  # ModalView 생성
+        popup.add_widget(popup_content)  # ModalView에 EventPopup 추가
 
         # 팝업 객체를 EventPopup에 전달
         popup_content.set_popup(popup)

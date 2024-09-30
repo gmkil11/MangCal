@@ -31,3 +31,20 @@ def get_calendar_data_by_date(supabase_client: Client, date: str):
     
     return response.data
 
+# 사용자 인증 함수
+def verify_login(username, password, supabase_client):
+    """Supabase에서 사용자 이름과 비밀번호를 확인하는 함수"""
+    try:
+        response = supabase_client.table('global_setting').select('*').eq('user_name', username).execute()
+        if response.data:  # 데이터가 있을 경우
+            user_data = response.data[0]
+            return user_data.get('password') == password  # 비밀번호 일치 여부 확인
+        else:
+            print("사용자 이름을 찾을 수 없습니다.")
+            return False
+    except Exception as e:
+        print(f"로그인 중 오류 발생: {e}")
+        return False
+
+
+

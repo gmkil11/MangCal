@@ -99,10 +99,10 @@
 <EventPopup>:
     font_name: 'NanumGothic.ttf'
     title: ""  # 제목을 비워서 숨기기
-    auto_dismiss: False  # 외부 클릭으로 팝업 닫히지 않게 설정
+    auto_dismiss: False
 
     BoxLayout:
-        orientation: 'vertical'  # 세로 방향으로 정렬
+        orientation: 'vertical'
         padding: 10
         spacing: 20
 
@@ -135,3 +135,47 @@
                 text: "닫기"
                 on_press: root.popup.dismiss()
                 font_name: 'NanumGothic.ttf'
+
+<LoginModalView>:
+    size_hint: 0.8, 0.5  # ModalView 크기 설정
+    auto_dismiss: False  # 자동으로 닫히지 않도록 설정
+    pos_hint: {"center_x": 0.5, "center_y": 0.5}  # 중앙에 배치
+
+    BoxLayout:
+        orientation: 'vertical'
+        padding: 10
+        spacing: 20
+
+        Label:
+            text: "로그인"
+            font_size: 24
+            size_hint_y: None
+            height: 40
+
+        TextInput:
+            id: username_input
+            hint_text: "사용자 이름"
+            multiline: False
+            size_hint_y: None
+            height: 50  # 높이를 명확히 설정
+
+        TextInput:
+            id: password_input
+            hint_text: "비밀번호"
+            password: True
+            multiline: False
+            size_hint_y: None
+            height: 50  # 높이를 명확히 설정
+
+        BoxLayout:
+            size_hint_y: None
+            height: 50
+            spacing: 10
+
+            Button:
+                text: "로그인"
+                on_press: root.login()  # 인자를 추가로 전달하지 않도록 수정
+
+            Button:
+                text: "취소"
+                on_press: root.dismiss()  # ModalView 닫기
