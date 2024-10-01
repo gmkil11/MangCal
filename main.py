@@ -152,6 +152,12 @@ class CalendarLayout(BoxLayout):
         self.events = response  # 전체 일정을 변수에 저장
         logging.info(f"전체 {len(self.events)}개 일정 로드")  # 전체 일정 로드 로그 출력
         self.update_calendar()  # 로그인 후 달력 업데이트
+    
+    def refresh_calendar(self):
+        """새로고침 버튼을 클릭했을 때 데이터를 다시 불러오고 달력을 갱신하는 메서드"""
+        logging.info("데이터 새로고침 중...")
+        self.load_all_events()  # 새 데이터를 불러옴
+        self.update_calendar()  # 달력을 새로 그리기
 
     def setGlobalColor(self):
         """글로벌 색상 선택 팝업을 열기 위한 메서드"""
