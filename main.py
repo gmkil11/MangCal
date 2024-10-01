@@ -3,6 +3,7 @@ import os
 import json
 from datetime import datetime, timedelta
 from kivy.app import App
+from kivy.graphics import Color, Rectangle  # Color와 Rectangle 임포트
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
 from kivy.uix.label import Label
@@ -71,8 +72,6 @@ class LoginModal(ModalView):
             self.parent.remove_widget(self)
 
 
-
-
 class ColorPickerPopup(BoxLayout):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -92,7 +91,8 @@ class CalendarLayout(BoxLayout):
     events = []  # 전체 일정 데이터를 저장할 리스트
     color_picker_popup = None # 팝업 인스턴스를 저장할 속성 추가
     selected_color = ListProperty([0.7, 0.7, 0.7, 1])  # 선택한 색상 저장, 초기값 설정
-
+    
+    
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.supabase_client = supabase_helper.create_supabase_client()  # Supabase 클라이언트 생성
@@ -129,16 +129,6 @@ class CalendarLayout(BoxLayout):
         self.login_popup = LoginModal(calendar_layout=self, supabase_client=self.supabase_client)
         self.login_popup.open()  # 로그인 팝업을 띄우기
 
-        # ModalView를 맨 앞으로 보이게 하기 위해 재배치
-        self.bring_to_front(self.login_popup)
-
-    def bring_to_front(self, widget):
-        # 먼저 위젯을 제거한 후 다시 추가하여 가장 위로 올림
-        parent = widget.parent
-        if parent:
-            parent.remove_widget(widget)
-        self.add_widget(widget)  # 가장 나중에 추가되어 z-order에서 맨 앞으로 이동
-
     def parse_color(self, color_string):
         """문자열 형식의 색상 데이터를 tuple로 변환"""
         try:
@@ -152,7 +142,7 @@ class CalendarLayout(BoxLayout):
         self.events = response  # 전체 일정을 변수에 저장
         logging.info(f"전체 {len(self.events)}개 일정 로드")  # 전체 일정 로드 로그 출력
         self.update_calendar()  # 로그인 후 달력 업데이트
-    
+
     def refresh_calendar(self):
         """새로고침 버튼을 클릭했을 때 데이터를 다시 불러오고 달력을 갱신하는 메서드"""
         logging.info("데이터 새로고침 중...")
@@ -167,7 +157,8 @@ class CalendarLayout(BoxLayout):
         color_picker.bind(color=self.on_color)
 
         # 팝업 객체 생성
-        self.color_popup = Popup(title="색상 선택", content=color_picker, size_hint=(0.8, 0.8))
+        self.color_popup = ModalView(size_hint=(0.8, 0.8), padding=20)
+        self.color_popup.add_widget(color_picker)
 
         # 팝업 열기
         self.color_popup.open()
@@ -175,7 +166,15 @@ class CalendarLayout(BoxLayout):
     def on_color(self, instance, value):
         """선택된 색상을 모든 버튼에 적용하는 메서드"""
         self.selected_color = value  # 선택한 색상을 저장
+        logging.info(f"새로 선택된 글로벌 색상: {self.selected_color}")
         self.update_calendar()  # 색상 선택 후 즉시 업데이트
+
+    def calculate_brightness(self, color):
+        # RGB 색상을 기반으로 밝기를 계산
+        r, g, b = color[:3]  # color는 [R, G, B, A] 형식이므로 앞의 세 값을 사용
+        brightness = 0.299 * r + 0.587 * g + 0.114 * b
+        return brightness
+
 
     def get_events_for_month(self, year, month):
         """특정 연도와 월에 해당하는 일정을 필터링"""
@@ -189,15 +188,13 @@ class CalendarLayout(BoxLayout):
         return filtered_events
 
     def update_calendar(self):
+        # 달력을 업데이트하기 전에 글로벌 색상 로그를 남김
+        logging.info(f"Updating calendar with global color: {self.selected_color}")
+    
         # 수동으로 calendar_grid를 참조 (ids를 통해 kv 파일의 id로 연결)
         calendar_grid = self.ids['calendar_grid']
         calendar_grid.clear_widgets()
-
-        # 요일 리스트 (일요일부터 토요일까지)
-        weekdays = ['일', '월', '화', '수', '목', '금', '토']
-        for weekday in weekdays:
-            logging.info(f"요일 라벨 추가: {weekday}")  # 요일 라벨 추가 로그
-            calendar_grid.add_widget(Label(text=weekday, bold=True, font_name="NanumGothic.ttf"))
+        
 
         # 해당 월의 시작 날짜와 끝 날짜 계산
         first_day_of_month = datetime(self.year, self.month, 1)
@@ -219,27 +216,34 @@ class CalendarLayout(BoxLayout):
             prev_day = previous_month_last_day - first_weekday + day + 1
             date_str = f"{self.year if self.month > 1 else self.year - 1}-{12 if self.month == 1 else self.month - 1:02}-{prev_day:02}"
             day_events = [event for event in previous_month_events if event['schedule_day'][:10] == date_str]
+            # 다음 달 버튼: 글로벌 색상을 기반으로 채도 낮춘 색상 적용
+            darker_color = [c * 0.7 for c in self.selected_color]
 
             if day_events:
                 event_texts = "\n\n".join([event['schedule_value'] for event in day_events])
                 event_text = f"{prev_day}\n\n{event_texts}"
-                btn_color = self.parse_color(day_events[0].get('btn_color', ''))  # 문자열을 tuple로 변환
-                # 이전 달 버튼 채도 낮춘 색상 적용
-                darker_color = [c * 0.7 for c in btn_color[:3]] + [1]  # 채도를 낮춘 색상
                 logging.info(f"{date_str}에 대한 이전 달 일정 추가: {event_texts}")  # 일정 로그
             else:
                 event_text = str(prev_day)
-                darker_color = (0.7, 0.7, 0.7, 1)  # 기본 배경색은 채도를 낮춘 회색
                 logging.info(f"{date_str}에 이전 달 일정 없음")  # 일정 없음 로그
+
+            # 버튼 배경색의 밝기에 따라 글자 색상 변경
+            brightness = self.calculate_brightness(darker_color)
+            if brightness > 0.5:
+                text_color = (0, 0, 0, 1)  # 밝으면 검정 글씨
+            else:
+                text_color = (1, 1, 1, 1)  # 어두우면 흰색 글씨
 
             btn = Button(
                 text=event_text,    
+                background_normal='',  # 기본 배경 이미지 제거
                 font_size='18',
                 halign='left',
                 valign='top',
                 padding=(10, 10),
                 font_name="NanumGothic.ttf",
                 background_color=darker_color,  # 채도를 낮춘 배경색 설정
+                color=text_color,  # 글자색 설정
                 text_size=(self.width, None),
                 on_press=lambda instance, m=self.month - 1: self.show_event_popup(instance, m))
 
@@ -254,21 +258,43 @@ class CalendarLayout(BoxLayout):
             if day_events:
                 event_texts = "\n\n".join([event['schedule_value'] for event in day_events])
                 event_text = f"{day}\n\n{event_texts}"
-                btn_color = self.parse_color(day_events[0].get('btn_color', ''))  # 문자열을 tuple로 변환
+
+                # supabase에서 받아온 btn_color 값이 있으면 해당 값을 사용하고, 없으면 None 반환
+                btn_color_raw = day_events[0].get('btn_color', None)
+                # btn_color_raw가 None이거나 빈 문자열일 경우
+                if not btn_color_raw:
+                    btn_color = None
+                else:
+                    btn_color = self.parse_color(btn_color_raw)
+
+                # btn_color가 None일 경우 global_color로 대체
+                if btn_color is None:
+                    btn_color = self.selected_color  # global_color 사용
+                    logging.info(f"Supabase에서 btn_color가 None 또는 빈 값으로 반환됨. Global color 사용: {btn_color}")
+
                 logging.info(f"{date_str}에 대한 일정 추가: {event_texts}")  # 일정 로그
             else:
                 event_text = str(day)
-                btn_color = (1, 1, 1, 1)  # 기본 배경색은 흰색
-                logging.info(f"{date_str}에 일정 없음")  # 일정 없음 로그
+                btn_color = self.selected_color  # global color 적용
+                logging.info(f"{date_str}에 일정 없음. 기본 색상 사용.")  # 일정 없음 로그
+
+            # 버튼 배경색의 밝기에 따라 글자 색상 변경
+            brightness = self.calculate_brightness(btn_color)
+            if brightness > 0.5:
+                text_color = (0, 0, 0, 1)  # 밝으면 검정 글씨
+            else:
+                text_color = (1, 1, 1, 1)  # 어두우면 흰색 글씨
 
             btn = Button(
                 text=event_text,
+                background_normal='',  # 기본 배경 이미지 제거
                 font_size='18',
                 halign='left',
                 valign='top',
                 padding=(10, 10),
                 font_name="NanumGothic.ttf",
                 background_color=btn_color,  # 배경색 설정
+                color=text_color,  # 글자색 설정
                 text_size=(self.width, None),
                 on_press=lambda instance, m=self.month: self.show_event_popup(instance, m))
 
@@ -281,27 +307,34 @@ class CalendarLayout(BoxLayout):
         while total_days_displayed < 35:  # 7 * 5 그리드를 위해 총 35칸 필요
             date_str = f"{self.year if self.month < 12 else self.year + 1}-{1 if self.month == 12 else self.month + 1:02}-{next_month_day:02}"
             day_events = [event for event in next_month_events if event['schedule_day'][:10] == date_str]
+            # 다음 달 버튼: 글로벌 색상을 기반으로 채도 낮춘 색상 적용
+            darker_color = [c * 0.7 for c in self.selected_color]
 
             if day_events:
                 event_texts = "\n\n".join([event['schedule_value'] for event in day_events])
                 event_text = f"{next_month_day}\n\n{event_texts}"
-                btn_color = self.parse_color(day_events[0].get('btn_color', ''))  # 문자열을 tuple로 변환
-                # 다음 달 버튼 채도 낮춘 색상 적용
-                darker_color = [c * 0.7 for c in btn_color[:3]] + [1]  # 채도를 낮춘 색상
                 logging.info(f"{date_str}에 대한 다음 달 일정 추가: {event_texts}")  # 일정 로그
             else:
                 event_text = str(next_month_day)
-                darker_color = (0.7, 0.7, 0.7, 1)  # 기본 배경색은 채도를 낮춘 회색
                 logging.info(f"{date_str}에 다음 달 일정 없음")  # 일정 없음 로그
+            
+            # 버튼 배경색의 밝기에 따라 글자 색상 변경
+            brightness = self.calculate_brightness(darker_color)
+            if brightness > 0.5:
+                text_color = (0, 0, 0, 1)  # 밝으면 검정 글씨
+            else:
+                text_color = (1, 1, 1, 1)  # 어두우면 흰색 글씨
 
             btn = Button(
                 text=event_text,
+                background_normal='',  # 기본 배경 이미지 제거
                 font_size='18',
                 halign='left',
                 valign='top',
                 padding=(10, 10),
                 font_name="NanumGothic.ttf",
                 background_color=darker_color,  # 채도를 낮춘 배경색 설정
+                color=text_color,  # 글자색 설정
                 text_size=(self.width, None),
                 on_press=lambda instance, m=self.month + 1: self.show_event_popup(instance, m))
 
@@ -367,6 +400,19 @@ class EventPopup(BoxLayout):
         print(f"일정 제목: {title}, 내용: {content}")
         if self.popup:
             self.popup.dismiss()  # 팝업 창 닫기
+
+    def setLocalColor(self):
+        color_picker = ColorPicker()
+        color_picker.bind(color=self.on_color)
+        popup = ModalView(size_hint=(0.8, 0.8), padding=20)
+        popup.add_widget(color_picker)
+        popup.open()
+
+    def on_color(self, instance, color):
+        # 색상 값을 반올림하여 2자리 소수로 변환
+        rounded_color = [round(c, 2) for c in color]
+        logging.info(f"선택한 색상: {rounded_color}")
+        # 여기에서 선택된 색상을 다른 곳에 사용할 수 있습니다.
 
 class CalendarApp(App):
     def build(self):

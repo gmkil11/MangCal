@@ -87,12 +87,106 @@
                 size_hint_x: 0.5
                 on_press: root.go_to_next_month()
 
+    # 요일 리스트 레이아웃
+    GridLayout:
+        id: calendar_grid_day
+        spacing: 2
+        cols: 7
+        rows: 1
+        size_hint_y: 0.1
+        # 각 요일을 위한 BoxLayout과 Label 설정
+        BoxLayout:
+            canvas.before:
+                Color:
+                    rgba: root.selected_color
+                Rectangle:
+                    pos: self.pos
+                    size: self.size
+            Label:
+                text: "일"
+                color: 1, 1, 1, 1
+                font_name: 'NanumGothic.ttf'
+
+        BoxLayout:
+            canvas.before:
+                Color:
+                    rgba: root.selected_color
+                Rectangle:
+                    pos: self.pos
+                    size: self.size
+            Label:
+                text: "월"
+                color: 1, 1, 1, 1
+                font_name: 'NanumGothic.ttf'
+
+        BoxLayout:
+            canvas.before:
+                Color:
+                    rgba: root.selected_color
+                Rectangle:
+                    pos: self.pos
+                    size: self.size
+            Label:
+                text: "화"
+                color: 1, 1, 1, 1
+                font_name: 'NanumGothic.ttf'
+
+        BoxLayout:
+            canvas.before:
+                Color:
+                    rgba: root.selected_color
+                Rectangle:
+                    pos: self.pos
+                    size: self.size
+            Label:
+                text: "수"
+                color: 1, 1, 1, 1
+                font_name: 'NanumGothic.ttf'
+
+        BoxLayout:
+            canvas.before:
+                Color:
+                    rgba: root.selected_color
+                Rectangle:
+                    pos: self.pos
+                    size: self.size
+            Label:
+                text: "목"
+                color: 1, 1, 1, 1
+                font_name: 'NanumGothic.ttf'
+
+        BoxLayout:
+            canvas.before:
+                Color:
+                    rgba: root.selected_color
+                Rectangle:
+                    pos: self.pos
+                    size: self.size
+            Label:
+                text: "금"
+                color: 1, 1, 1, 1
+                font_name: 'NanumGothic.ttf'
+
+        BoxLayout:
+            canvas.before:
+                Color:
+                    rgba: root.selected_color
+                Rectangle:
+                    pos: self.pos
+                    size: self.size
+            Label:
+                text: "토"
+                color: 1, 1, 1, 1
+                font_name: 'NanumGothic.ttf'
+
     GridLayout:
         id: calendar_grid  # id로 calendar_grid를 지정
         cols: 7
-        rows: 7
+        rows: 
         size_hint_y: 0.9
         spacing: 2
+        padding: [0, 2, 0, 0]  # 위, 아래 간격을 5로 설정
+
 
 
     
