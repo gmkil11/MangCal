@@ -45,6 +45,42 @@ def verify_login(username, password, supabase_client):
     except Exception as e:
         print(f"로그인 중 오류 발생: {e}")
         return False
+    
+def get_global_setting(username, supabase_client):
+    """Supabase에서 username으로 글로벌 설정을 가져오는 함수"""
+    try:
+        response = supabase_client.table('global_setting').select('*').eq('user_name', username).execute()
+        if response.data:  # 데이터가 있을 경우
+            global_color = response.data[0].get('global_color', None)
+            if global_color:
+                return global_color  # 글로벌 색상 반환
+            else:
+                return None  # 글로벌 색상이 없으면 None 반환
+        else:
+            print("사용자 정보에 해당하는 글로벌 세팅값을 찾을 수 없습니다.")
+            return None
+    except Exception as e:
+        print(f"글로벌 세팅값을 가져오는데 오류가 발생: {e}")
+        return None
+
+def save_global_color(username, color_value, supabase_client):
+    """Supabase에 글로벌 색상을 저장하는 함수"""
+    try:
+        # 업데이트 요청을 보냄
+        response = supabase_client.table('global_setting').update({'global_color': color_value}).eq('user_name', username).execute()
+
+        if response.data:  # response.data가 있으면 성공
+            print(f"Supabase 저장 성공: {response.data}")
+            return True  # 성공적으로 업데이트
+        else:
+            print(f"Supabase 저장 실패: {response}")
+            return False
+    except Exception as e:
+        print(f"Supabase에 글로벌 색상 저장 중 오류 발생: {e}")
+        return False
+
+
+
 
 
 

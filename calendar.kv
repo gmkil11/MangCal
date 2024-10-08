@@ -194,12 +194,13 @@
 <EventPopup>:
     font_name: 'NanumGothic.ttf'
     title: ""  # 제목을 비워서 숨기기
-    auto_dismiss: False
-
+    auto_dismiss: False  # 외부 클릭으로 팝업 닫히지 않게 설정
+    separator_height: 0
+    
     BoxLayout:
-        orientation: 'vertical'
-        padding: 10
-        spacing: 20
+        orientation: 'vertical'  # 세로 방향으로 정렬
+        padding: 30
+        spacing: 40
 
         Label:
             id: date_label
@@ -207,6 +208,17 @@
             font_name: 'NanumGothic.ttf'
             size_hint_y: None
             height: 30
+        
+        BoxLayout:
+            size_hint_y: None
+            height: 40 
+            spacing: 10
+            
+            Button:
+                text: "색상 변경"
+                font_name: 'NanumGothic.ttf'
+                on_press: root.setLocalColor()
+
 
         TextInput:
             id: content_input
@@ -223,7 +235,7 @@
 
             Button:
                 text: "등록"
-                on_press: root.submit_event(title_input.text, content_input.text)
+                on_press: root.submit_event(content_input.text)
                 font_name: 'NanumGothic.ttf'
 
             Button:

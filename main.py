@@ -20,6 +20,7 @@ import ast  # 문자열을 tuple로 변환하기 위해 사용
 logging.basicConfig(level=logging.INFO)
 
 LOGIN_FILE = "login_info.json"  # 로그인 정보를 저장할 파일
+global_color = [1, 1, 1, 1]  # 기본 값으로 흰색을 설정
 
 class LoginModal(ModalView):
     def __init__(self, calendar_layout, supabase_client, **kwargs):
@@ -50,7 +51,7 @@ class LoginModal(ModalView):
         # 로그인 검증 (supabase_client를 인자로 전달)
         if supabase_helper.verify_login(username, password, self.supabase_client):
             print("로그인 성공")
-            self.save_login_info()  # 로그인 성공 시 날짜 저장
+            self.save_login_info(username)  # 로그인 성공 시 날짜 저장
             self.remove_login_popup()  # 로그인 팝업 닫기
             self.calendar_layout.load_all_events()  # 로그인 성공 후 달력 데이터를 불러옴
         else:
@@ -59,10 +60,14 @@ class LoginModal(ModalView):
             self.username_input.text = ""
             self.password_input.text = ""
             self.password_input.hint_text = "로그인 실패. 다시 시도하세요."
+            
 
-    def save_login_info(self):
+    def save_login_info(self, username):
         """로그인 날짜를 파일에 저장"""
-        login_data = {"last_login": datetime.now().isoformat()}
+        login_data = {
+            "last_login": datetime.now().isoformat(),
+            "username": username  # 사용자 이름 저장
+        }
         with open(LOGIN_FILE, "w") as f:
             json.dump(login_data, f)
 
@@ -96,14 +101,11 @@ class CalendarLayout(BoxLayout):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.supabase_client = supabase_helper.create_supabase_client()  # Supabase 클라이언트 생성
-        self.load_all_events()  # 전체 일정을 한 번에 불러옴
-        self.update_calendar()
-        self.color_popup = None  # 팝업을 저장할 속성 추가
         # 로그인 팝업 표시 여부 결정
         if self.should_show_login_popup():
-            self.show_login_popup()
+            self.show_login_popup()  # 로그인 팝업을 띄우고 달력 로딩은 하지 않음
         else:
-            self.load_all_events()  # 전체 일정을 한 번에 불러옴
+            self.load_all_events()  # 로그인 기록이 있으면 바로 달력 데이터를 불러옴
             self.update_calendar()
 
     def should_show_login_popup(self):
@@ -138,10 +140,36 @@ class CalendarLayout(BoxLayout):
 
     def load_all_events(self):
         """로그인 후 Supabase에서 전체 일정을 불러옴"""
-        response = supabase_helper.get_calendar_data(self.supabase_client)  # 전체 일정 가져오기
+        # 로그인된 사용자 이름 가져오기 (예시로 저장된 사용자 이름 사용)
+        username = self.get_logged_in_username()
+        logging.info(f"username: {username}")
+
+        # 글로벌 색상 가져오기
+        global_color = supabase_helper.get_global_setting(username, self.supabase_client)
+        if global_color:
+            self.selected_color = self.parse_color(global_color)  # 글로벌 색상 적용
+            logging.info(f"글로벌 색상이 적용되었습니다: {self.selected_color}")
+        else :
+            logging.info(f"username: {username}, global_color가 없습니다")
+
+        # Supabase에서 일정 데이터를 불러옴
+        response = supabase_helper.get_calendar_data(self.supabase_client)
         self.events = response  # 전체 일정을 변수에 저장
         logging.info(f"전체 {len(self.events)}개 일정 로드")  # 전체 일정 로드 로그 출력
         self.update_calendar()  # 로그인 후 달력 업데이트
+
+    def get_logged_in_username(self):
+        """로그인한 사용자 이름을 가져오는 함수 (저장된 로그인 정보를 사용)"""
+        if os.path.exists(LOGIN_FILE):
+            try:
+                with open(LOGIN_FILE, "r") as f:
+                    login_data = json.load(f)
+                    return login_data.get("username", None)
+            except (json.JSONDecodeError, FileNotFoundError):
+                print("로그인 정보 파일이 손상되었거나 비어 있습니다.")
+                return None  # 파일이 손상되었으면 그냥 None 반환
+        return None
+
 
     def refresh_calendar(self):
         """새로고침 버튼을 클릭했을 때 데이터를 다시 불러오고 달력을 갱신하는 메서드"""
@@ -156,9 +184,18 @@ class CalendarLayout(BoxLayout):
         # 색상 선택기에서 색상 변경 시 호출되는 메서드
         color_picker.bind(color=self.on_color)
 
+        # 저장 버튼 생성
+        save_button = Button(text="저장", size_hint=(1, 0.2), font_name="NanumGothic.ttf", on_press=self.on_save_color)
+
         # 팝업 객체 생성
         self.color_popup = ModalView(size_hint=(0.8, 0.8), padding=20)
-        self.color_popup.add_widget(color_picker)
+
+        # 레이아웃에 ColorPicker와 저장 버튼 추가
+        popup_layout = BoxLayout(orientation='vertical', spacing=10)
+        popup_layout.add_widget(color_picker)
+        popup_layout.add_widget(save_button)
+
+        self.color_popup.add_widget(popup_layout)
 
         # 팝업 열기
         self.color_popup.open()
@@ -168,6 +205,24 @@ class CalendarLayout(BoxLayout):
         self.selected_color = value  # 선택한 색상을 저장
         logging.info(f"새로 선택된 글로벌 색상: {self.selected_color}")
         self.update_calendar()  # 색상 선택 후 즉시 업데이트
+
+    def on_save_color(self, instance):
+        """선택한 색상을 Supabase에 저장하는 메서드"""
+        username = self.get_logged_in_username()  # 로그인된 사용자 이름 가져오기
+
+        if username:
+            # Supabase에 글로벌 색상 저장
+            color_value = str(self.selected_color)  # 색상 값을 문자열로 변환
+            success = supabase_helper.save_global_color(username, color_value, self.supabase_client)
+
+            if success:
+                logging.info(f"{username}의 글로벌 색상이 성공적으로 저장되었습니다: {color_value}")
+                self.color_popup.dismiss()  # 저장 후 팝업 닫기
+                self.update_calendar()  # 색상 업데이트
+            else:
+                logging.error("글로벌 색상 저장에 실패했습니다.")
+        else:
+            logging.error("로그인된 사용자가 없습니다.")
 
     def calculate_brightness(self, color):
         # RGB 색상을 기반으로 밝기를 계산
@@ -355,9 +410,21 @@ class CalendarLayout(BoxLayout):
 
         logging.info(formatted_date)
 
+        # 선택된 날짜에 해당하는 이벤트를 찾아 미리 content_input에 입력
+        day_events = [event for event in self.events if event['schedule_day'][:10] == formatted_date]
+
         # 팝업 내용 설정
         popup_content = EventPopup()
         popup_content.ids.date_label.text = f"선택한 날짜: {formatted_date}"
+
+        # 부모 레이아웃 설정
+        popup_content.set_parent_layout(self)  # CalendarLayout 인스턴스를 전달
+
+        if day_events:
+            event_text = "\n".join([event['schedule_value'] for event in day_events])
+            popup_content.ids.content_input.text = event_text  # content_input에 기존 일정 텍스트 채우기
+        else:
+            popup_content.ids.content_input.text = ""  # 일정이 없으면 빈 텍스트로 설정
 
         # 팝업 객체 생성 및 팝업을 content에 설정
         popup = ModalView(size_hint=(0.8, 0.6))  # ModalView 생성
@@ -391,13 +458,22 @@ class CalendarLayout(BoxLayout):
 
 class EventPopup(BoxLayout):
     popup = None  # Popup 객체를 저장할 속성
+    rounded_color = None  # 선택된 색상을 저장할 변수, 처음에는 None으로 설정
 
     def set_popup(self, popup_instance):
         """Popup 객체를 저장"""
         self.popup = popup_instance
 
-    def submit_event(self, title, content):
-        print(f"일정 제목: {title}, 내용: {content}")
+    def set_parent_layout(self, layout_instance):
+        """CalendarLayout 인스턴스를 저장"""
+        self.parent_layout = layout_instance
+
+    def submit_event(self, content):
+        # on_color에서 선택된 색상이 없으면 global_color를 사용
+        if self.rounded_color is None:
+            # 선택된 색상이 없을 때, 부모 레이아웃(CalendarLayout)의 selected_color를 사용
+            self.rounded_color = self.parent_layout.selected_color
+        print(f"내용: {content}, 선택한 색상: {self.rounded_color}")
         if self.popup:
             self.popup.dismiss()  # 팝업 창 닫기
 
@@ -410,9 +486,19 @@ class EventPopup(BoxLayout):
 
     def on_color(self, instance, color):
         # 색상 값을 반올림하여 2자리 소수로 변환
-        rounded_color = [round(c, 2) for c in color]
-        logging.info(f"선택한 색상: {rounded_color}")
+        self.rounded_color = [round(c, 2) for c in color]
+        logging.info(f"선택한 색상: {self.rounded_color}")
         # 여기에서 선택된 색상을 다른 곳에 사용할 수 있습니다.
+
+    def get_global_color_from_supabase(self):
+        """Supabase에서 global_color를 가져오는 함수"""
+        username = self.parent_layout.get_logged_in_username()  # CalendarLayout에서 로그인된 사용자 이름을 가져옴
+        global_color = supabase_helper.get_global_setting(username, self.parent_layout.supabase_client)
+        if global_color and 'global_color' in global_color:
+            return self.parent_layout.parse_color(global_color['global_color'])  # global_color를 파싱하여 반환
+        else:
+            logging.info("global_color를 찾을 수 없으므로 기본 색상(흰색)을 사용합니다.")
+            return [1, 1, 1, 1]  # 기본 흰색 반환
 
 class CalendarApp(App):
     def build(self):
