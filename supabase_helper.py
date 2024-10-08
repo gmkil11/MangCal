@@ -16,15 +16,38 @@ def get_calendar_data(supabase_client: Client):
     return response.data
 
 # 일정 추가 함수
-def add_event_to_supabase(title, date, value, supabase_client: Client):
+def add_event_to_supabase(date, value, btn_color, supabase_client: Client):
     """Supabase에 새로운 일정을 추가"""
-    data = {"schedule_title": title, "schedule_day": date, "schedule_value": value}
+    data = {"schedule_day": date, "schedule_value": value, "btn_color": btn_color}
     supabase_client.table('minsik_calender').insert(data).execute()
-
-    
     print("일정이 성공적으로 등록되었습니다.")
 
-    # 특정 날짜에 해당하는 일정 조회 함수
+def upsert_event_to_supabase(date, value, btn_color, supabase_client: Client):
+    """Supabase에서 해당 날짜에 일정을 추가하거나 업데이트하는 함수"""
+    data = {
+        "schedule_day": date,
+        "schedule_value": value,
+        "btn_color": btn_color if btn_color else None  # 선택된 색상이 없으면 None
+    }
+    
+    # Upsert를 사용하여 일정 삽입 또는 업데이트
+    supabase_client.table('minsik_calender').upsert(data, on_conflict=["schedule_day"]).execute()
+
+    print(f"일정이 성공적으로 추가되었거나 업데이트되었습니다: {date}")
+
+def get_event_by_date(date, supabase_client: Client):
+    """Supabase에서 특정 날짜에 해당하는 일정을 가져오는 함수"""
+    try:
+        response = supabase_client.table('minsik_calender').select('*').eq('schedule_day', date).execute()
+        if response.data:
+            return response.data[0]  # 해당 날짜의 이벤트가 있다면 반환
+        return None  # 해당 날짜에 이벤트가 없을 경우
+    except Exception as e:
+        print(f"일정을 가져오는 중 오류가 발생: {e}")
+        return None
+
+
+# 특정 날짜에 해당하는 일정 조회 함수
 def get_calendar_data_by_date(supabase_client: Client, date: str):
     """선택된 날짜에 해당하는 일정을 조회"""
     response = supabase_client.table('minsik_calender').select('*').eq('schedule_day', date).execute()

@@ -417,6 +417,9 @@ class CalendarLayout(BoxLayout):
         popup_content = EventPopup()
         popup_content.ids.date_label.text = f"선택한 날짜: {formatted_date}"
 
+        # 선택한 날짜를 팝업에 전달
+        popup_content.selected_date = formatted_date
+
         # 부모 레이아웃 설정
         popup_content.set_parent_layout(self)  # CalendarLayout 인스턴스를 전달
 
@@ -469,13 +472,32 @@ class EventPopup(BoxLayout):
         self.parent_layout = layout_instance
 
     def submit_event(self, content):
-        # on_color에서 선택된 색상이 없으면 global_color를 사용
-        if self.rounded_color is None:
-            # 선택된 색상이 없을 때, 부모 레이아웃(CalendarLayout)의 selected_color를 사용
-            self.rounded_color = self.parent_layout.selected_color
-        print(f"내용: {content}, 선택한 색상: {self.rounded_color}")
+        # selected_date는 이미 문자열이므로 변환 없이 사용
+        formatted_selected_date = self.selected_date
+        
+        # 기존 이벤트를 가져오는 로직
+        existing_event = supabase_helper.get_event_by_date(formatted_selected_date, self.parent_layout.supabase_client)
+        
+        # 색상을 선택하지 않았을 경우, 기존 색상을 유지
+        if self.rounded_color is None and existing_event and existing_event.get("btn_color"):
+            self.rounded_color = existing_event["btn_color"]
+        
+        # Supabase에 업데이트 또는 추가
+        supabase_helper.upsert_event_to_supabase(
+            date=formatted_selected_date,
+            value=content,
+            btn_color=self.rounded_color,
+            supabase_client=self.parent_layout.supabase_client
+        )
+
+        print(f"일정이 성공적으로 저장되었습니다: {formatted_selected_date}")
+        self.parent_layout.refresh_calendar()
+        
         if self.popup:
             self.popup.dismiss()  # 팝업 창 닫기
+
+
+
 
     def setLocalColor(self):
         color_picker = ColorPicker()
